@@ -9,7 +9,7 @@ import os
 from typing import Any, Dict
 
 from bindu import __version__
-from bindu.common.protocol.types import AgentCapabilities, Skill
+from bindu.common.protocol.types import AgentCapabilities, AgentTrust, Skill
 
 
 class ConfigValidator:
@@ -130,6 +130,9 @@ class ConfigValidator:
         if isinstance(config.get("capabilities"), dict):
             config["capabilities"] = AgentCapabilities(**config["capabilities"])
 
+        if config.get("agent_trust") is not None:
+            cls._validate_agent_trust_config(config["agent_trust"])
+
         if config.get("auth"):
             cls._validate_auth_config(config["auth"])
 
@@ -231,6 +234,68 @@ class ConfigValidator:
                 raise ValueError(
                     "Field 'execution_cost' must be a dict or a list of dicts"
                 )
+
+    # ------------------------------------------------------------------
+    # Agent trust validation
+    # ------------------------------------------------------------------
+
+    # Valid trust levels defined in AgentTrust protocol types
+    _VALID_TRUST_LEVELS = {
+        "admin",
+        "analyst",
+        "auditor",
+        "editor",
+        "guest",
+        "manager",
+        "operator",
+        "super_admin",
+        "support",
+        "viewer",
+    }
+
+    @classmethod
+    def _validate_agent_trust_config(cls, agent_trust: Any) -> None:
+        """Validate the agent_trust configuration field.
+
+        Ensures the trust config is a well-formed dictionary with required
+        fields before it is used by the agent runtime.
+
+        Args:
+            agent_trust: Value of config["agent_trust"]
+
+        Raises:
+            ValueError: If the trust config is missing required fields or
+                        contains invalid values.
+        """
+        if not isinstance(agent_trust, dict):
+            raise ValueError("Field 'agent_trust' must be a dictionary")
+
+        required_keys = {"identity_provider", "inherited_roles"}
+        missing = required_keys - agent_trust.keys()
+        if missing:
+            raise ValueError(
+                f"Field 'agent_trust' is missing required key(s): "
+                + ", ".join(sorted(missing))
+            )
+
+        if not isinstance(agent_trust.get("inherited_roles", []), list):
+            raise ValueError(
+                "Field 'agent_trust.inherited_roles' must be a list"
+            )
+
+        allowed_ops = agent_trust.get("allowed_operations")
+        if allowed_ops is not None:
+            if not isinstance(allowed_ops, dict):
+                raise ValueError(
+                    "Field 'agent_trust.allowed_operations' must be a dictionary"
+                )
+            for op, level in allowed_ops.items():
+                if level not in cls._VALID_TRUST_LEVELS:
+                    raise ValueError(
+                        f"Field 'agent_trust.allowed_operations[\"{op}\"]' has invalid "
+                        f"trust level '{level}'. "
+                        f"Must be one of: {', '.join(sorted(cls._VALID_TRUST_LEVELS))}"
+                    )
 
     # ------------------------------------------------------------------
     # Auth validation
